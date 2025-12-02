@@ -1,0 +1,217 @@
+#version: '3.8'
+
+services:
+  # Infrastructure
+  postgres:
+    image: postgres:15-alpine
+    container_name: flower-shop-postgres
+    environment:
+      POSTGRES_USER: flower_shop
+      POSTGRES_PASSWORD: flower_shop_pass
+      POSTGRES_DB: flower_shop_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flower_shop"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: flower-shop-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: flower-shop-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Microservices
+  auth-service:
+    build:
+      context: .
+      dockerfile: services/auth-service/Dockerfile
+    container_name: flower-shop-auth
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: flower_shop
+      POSTGRES_PASSWORD: flower_shop_pass
+      POSTGRES_DB: flower_shop_db
+      DATABASE_URL: postgresql://flower_shop:flower_shop_pass@postgres:5432/flower_shop_db
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: guest
+      RABBITMQ_PASSWORD: guest
+      JWT_SECRET_KEY: your-secret-key-change-in-production
+      JWT_ALGORITHM: HS256
+      JWT_ACCESS_TOKEN_EXPIRE_MINUTES: 30
+    ports:
+      - "8001:8001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./shared:/app/shared
+      - ./services/auth-service:/app
+
+  catalog-service:
+    build:
+      context: .
+      dockerfile: services/catalog-service/Dockerfile
+    container_name: flower-shop-catalog
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: flower_shop
+      POSTGRES_PASSWORD: flower_shop_pass
+      POSTGRES_DB: flower_shop_db
+      DATABASE_URL: postgresql://flower_shop:flower_shop_pass@postgres:5432/flower_shop_db
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: guest
+      RABBITMQ_PASSWORD: guest
+    ports:
+      - "8002:8002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./shared:/app/shared
+      - ./services/catalog-service:/app
+
+  ordering-service:
+    build:
+      context: .
+      dockerfile: services/ordering-service/Dockerfile
+    container_name: flower-shop-ordering
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: flower_shop
+      POSTGRES_PASSWORD: flower_shop_pass
+      POSTGRES_DB: flower_shop_db
+      DATABASE_URL: postgresql://flower_shop:flower_shop_pass@postgres:5432/flower_shop_db
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: guest
+      RABBITMQ_PASSWORD: guest
+    ports:
+      - "8003:8003"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    volumes:
+      - ./shared:/app/shared
+      - ./services/ordering-service:/app
+
+  payment-service:
+    build:
+      context: .
+      dockerfile: services/payment-service/Dockerfile
+    container_name: flower-shop-payment
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: flower_shop
+      POSTGRES_PASSWORD: flower_shop_pass
+      POSTGRES_DB: flower_shop_db
+      DATABASE_URL: postgresql://flower_shop:flower_shop_pass@postgres:5432/flower_shop_db
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: guest
+      RABBITMQ_PASSWORD: guest
+    ports:
+      - "8004:8004"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    volumes:
+      - ./shared:/app/shared
+      - ./services/payment-service:/app
+
+  delivery-service:
+    build:
+      context: .
+      dockerfile: services/delivery-service/Dockerfile
+    container_name: flower-shop-delivery
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: flower_shop
+      POSTGRES_PASSWORD: flower_shop_pass
+      POSTGRES_DB: flower_shop_db
+      DATABASE_URL: postgresql://flower_shop:flower_shop_pass@postgres:5432/flower_shop_db
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: guest
+      RABBITMQ_PASSWORD: guest
+    ports:
+      - "8005:8005"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    volumes:
+      - ./shared:/app/shared
+      - ./services/delivery-service:/app
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: services/api-gateway/Dockerfile
+    container_name: flower-shop-gateway
+    environment:
+      AUTH_SERVICE_URL: http://auth-service:8001
+      CATALOG_SERVICE_URL: http://catalog-service:8002
+      ORDERING_SERVICE_URL: http://ordering-service:8003
+      PAYMENT_SERVICE_URL: http://payment-service:8004
+      DELIVERY_SERVICE_URL: http://delivery-service:8005
+    ports:
+      - "8000:8000"
+    depends_on:
+      - auth-service
+      - catalog-service
+      - ordering-service
+      - payment-service
+      - delivery-service
+
+volumes:
+  postgres_data:
+
