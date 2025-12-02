@@ -35,8 +35,6 @@
 - **Payment Service**: http://localhost:8004
 - **Delivery Service**: http://localhost:8005
 - **RabbitMQ Management**: http://localhost:15672 (guest/guest)
-- **Redis**: localhost:6379
-- **PostgreSQL**: localhost:5432
 
 ### API Документация
 
